@@ -30,11 +30,14 @@ const LEVEL_SPRING := 0
 const LEVEL_SUMMER := 1
 const LEVEL_AUTUMN := 2
 const LEVEL_WINTER := 3
+const BACKGROUND_MUSIC: AudioStream = preload("res://素材/音乐/背景音效.MP3")
+const BACKGROUND_MUSIC_VOLUME_DB := -12.0
 
 var _player: ShepherdPlayer
 var _camera: Camera2D
 var _counter_label: Label
 var _status_label: Label
+var _background_music_player: AudioStreamPlayer
 var _collected := 0
 var _total_sheep := 0
 var _won := false
@@ -43,6 +46,8 @@ var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var _intro_active := false
 var _intro_tween: Tween
 var _level_index := LEVEL_SPRING
+var _game_started := false
+var _title_layer: CanvasLayer
 
 var _platforms := [
 	Rect2(Vector2(-60, 230), Vector2(230, 24)),
@@ -61,10 +66,17 @@ func _ready() -> void:
 	_create_world()
 	_create_player()
 	_create_camera()
+	_create_audio_players()
 	_create_hud()
-	_reset_level()
+	_reset_level(false)
+	_create_title_screen()
 
 func _process(_delta: float) -> void:
+	if not _game_started:
+		if Input.is_action_just_pressed("jump"):
+			_start_game()
+		return
+
 	if _player.global_position.y > FALL_LIMIT:
 		_player.respawn(_last_checkpoint)
 
@@ -128,7 +140,7 @@ func _create_world() -> void:
 		add_child(platform)
 		platform.setup(rect)
 
-func _reset_level() -> void:
+func _reset_level(start_preview: bool = true) -> void:
 	if _intro_tween and _intro_tween.is_valid():
 		_intro_tween.kill()
 
@@ -143,12 +155,16 @@ func _reset_level() -> void:
 		_player.pocket_count = 0
 		_player.pocket_capacity = _total_sheep
 		_player.respawn(_last_checkpoint)
-		_player.controls_enabled = true
+		_player.controls_enabled = start_preview
 		_player.queue_redraw()
 
 	_update_hud()
 	queue_redraw()
-	_start_route_preview()
+	if start_preview:
+		_start_route_preview()
+	elif _status_label:
+		_intro_active = false
+		_status_label.visible = false
 
 func _clear_sheep() -> void:
 	for sheep in get_tree().get_nodes_in_group("sheep"):
@@ -377,6 +393,18 @@ func _create_camera() -> void:
 	add_child(_camera)
 	_camera.make_current()
 
+func _create_audio_players() -> void:
+	_background_music_player = AudioStreamPlayer.new()
+	_background_music_player.name = "BackgroundMusic"
+	_background_music_player.stream = BACKGROUND_MUSIC
+	if _background_music_player.stream is AudioStreamMP3:
+		var music_stream := _background_music_player.stream as AudioStreamMP3
+		music_stream.loop = true
+	_background_music_player.volume_db = BACKGROUND_MUSIC_VOLUME_DB
+	_background_music_player.autoplay = true
+	add_child(_background_music_player)
+	_background_music_player.play()
+
 func _camera_follow_target() -> Vector2:
 	return _player.global_position + CAMERA_FOLLOW_OFFSET
 
@@ -435,6 +463,75 @@ func _create_hud() -> void:
 	_status_label.visible = false
 	layer.add_child(_status_label)
 
+func _create_title_screen() -> void:
+	_title_layer = CanvasLayer.new()
+	_title_layer.layer = 20
+	add_child(_title_layer)
+
+	var root := Control.new()
+	root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_title_layer.add_child(root)
+
+	var backdrop := ColorRect.new()
+	backdrop.color = Color(0.14, 0.19, 0.14, 0.88)
+	backdrop.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.add_child(backdrop)
+
+	var title := Label.new()
+	title.text = "牧羊人四季口袋"
+	title.position = Vector2(40, 24)
+	title.size = Vector2(400, 34)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 27)
+	title.add_theme_color_override("font_color", Color("#f3f0dc"))
+	root.add_child(title)
+
+	var tutorial_title := Label.new()
+	tutorial_title.text = "游戏教程"
+	tutorial_title.position = Vector2(46, 72)
+	tutorial_title.size = Vector2(388, 22)
+	tutorial_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	tutorial_title.add_theme_font_size_override("font_size", 15)
+	tutorial_title.add_theme_color_override("font_color", Color("#f3f0dc"))
+	root.add_child(tutorial_title)
+
+	var tutorial := Label.new()
+	tutorial.text = "A/D 或方向键移动\nSpace/W/上方向键跳跃\n收集每一关的 7 只小羊\n收齐后到达山顶旗子进入下一季\nR 重开当前关"
+	tutorial.position = Vector2(80, 99)
+	tutorial.size = Vector2(320, 82)
+	tutorial.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	tutorial.add_theme_font_size_override("font_size", 12)
+	tutorial.add_theme_color_override("font_color", Color("#e6ead4"))
+	root.add_child(tutorial)
+
+	var start_button := Button.new()
+	start_button.text = "开始游戏"
+	start_button.position = Vector2(170, 190)
+	start_button.size = Vector2(140, 28)
+	start_button.pressed.connect(_start_game)
+	root.add_child(start_button)
+
+	var quit_button := Button.new()
+	quit_button.text = "退出游戏"
+	quit_button.position = Vector2(170, 224)
+	quit_button.size = Vector2(140, 28)
+	quit_button.pressed.connect(_quit_game)
+	root.add_child(quit_button)
+
+	start_button.grab_focus()
+
+func _start_game() -> void:
+	if _game_started:
+		return
+	_game_started = true
+	if _title_layer:
+		_title_layer.visible = false
+	_level_index = LEVEL_SPRING
+	_reset_level()
+
+func _quit_game() -> void:
+	get_tree().quit()
+
 func _complete_level() -> void:
 	_won = true
 	_player.controls_enabled = false
@@ -474,51 +571,51 @@ func _season_colors() -> Dictionary:
 	match _level_index:
 		LEVEL_SPRING:
 			return {
-				"sky": Color("#c6d4bf"),
-				"far_hill": Color("#93ad78"),
-				"mid_hill": Color("#7f9c64"),
-				"near_hill": Color("#5f8455"),
-				"cloud": Color("#f2f4ea"),
-				"cloud_shadow": Color("#d5dccb"),
-				"tree_trunk": Color("#6a4730"),
-				"tree_leaf": Color("#789756"),
+				"sky": Color("#aebda9"),
+				"far_hill": Color("#879d79"),
+				"mid_hill": Color("#748d68"),
+				"near_hill": Color("#617a59"),
+				"cloud": Color("#d7dbc9"),
+				"cloud_shadow": Color("#bdc5b2"),
+				"tree_trunk": Color("#5c594a"),
+				"tree_leaf": Color("#6e875f"),
 				"tree_snow": false,
-				"flower_a": Color("#f0a6aa"),
-				"flower_b": Color("#f6ead6"),
-				"flower_c": Color("#cf8b5d"),
+				"flower_a": Color("#cba7a0"),
+				"flower_b": Color("#d8d4bf"),
+				"flower_c": Color("#a98d6a"),
 				"snow": Color(1, 1, 1, 0),
 			}
 		LEVEL_AUTUMN:
 			return {
-				"sky": Color("#d9cfaa"),
-				"far_hill": Color("#b99958"),
-				"mid_hill": Color("#a87d32"),
-				"near_hill": Color("#7e5f2a"),
-				"cloud": Color("#f4f1e8"),
-				"cloud_shadow": Color("#d5cfbd"),
-				"tree_trunk": Color("#5f3b22"),
-				"tree_leaf": Color("#d47a25"),
+				"sky": Color("#b7b8a5"),
+				"far_hill": Color("#918a68"),
+				"mid_hill": Color("#827a57"),
+				"near_hill": Color("#6c6548"),
+				"cloud": Color("#d9d7c6"),
+				"cloud_shadow": Color("#c0bba9"),
+				"tree_trunk": Color("#5a5144"),
+				"tree_leaf": Color("#8b7a4d"),
 				"tree_snow": false,
-				"flower_a": Color("#e39b27"),
-				"flower_b": Color("#f1bf42"),
-				"flower_c": Color("#bb5c1d"),
+				"flower_a": Color("#a88950"),
+				"flower_b": Color("#b6a66c"),
+				"flower_c": Color("#8f6945"),
 				"snow": Color(1, 1, 1, 0),
 			}
 		LEVEL_WINTER:
 			return {
-				"sky": Color("#c7d4dd"),
-				"far_hill": Color("#aebfca"),
-				"mid_hill": Color("#748b9f"),
-				"near_hill": Color("#526f84"),
-				"cloud": Color("#f6f8f7"),
-				"cloud_shadow": Color("#d7e0e2"),
-				"tree_trunk": Color("#5d472d"),
-				"tree_leaf": Color("#dce8ec"),
+				"sky": Color("#aab7ba"),
+				"far_hill": Color("#89999b"),
+				"mid_hill": Color("#6f8389"),
+				"near_hill": Color("#5c7279"),
+				"cloud": Color("#d6ddd8"),
+				"cloud_shadow": Color("#b9c5c3"),
+				"tree_trunk": Color("#575349"),
+				"tree_leaf": Color("#c4cfce"),
 				"tree_snow": true,
-				"flower_a": Color("#eef5f7"),
-				"flower_b": Color("#dbe7ec"),
-				"flower_c": Color("#c7d6df"),
-				"snow": Color("#f5f8f8"),
+				"flower_a": Color("#d4dbd9"),
+				"flower_b": Color("#c6d0cf"),
+				"flower_c": Color("#b6c2c1"),
+				"snow": Color("#e5ebe8"),
 			}
 		_:
 			return {

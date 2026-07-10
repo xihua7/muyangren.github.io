@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://8h5l4omm3ou5"
-path="res://.godot/imported/牧羊人赶路.png-f64ca736684696adaec1bc5c9ddea1c9.ctex"
+uid="uid://xaalmrca10g7"
+path="res://.godot/imported/睡觉2.png-882ac73f4a661a472142fa5291137314.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://素材/牧羊人赶路.png"
-dest_files=["res://.godot/imported/牧羊人赶路.png-f64ca736684696adaec1bc5c9ddea1c9.ctex"]
+source_file="res://素材/睡觉2.png"
+dest_files=["res://.godot/imported/睡觉2.png-882ac73f4a661a472142fa5291137314.ctex"]
 
 [params]
 

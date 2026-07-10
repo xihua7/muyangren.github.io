@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://wjv4su11dpum"
-path="res://.godot/imported/牧羊人睡觉.png-f5e4bf88b9c41a65bd44112a786d5a92.ctex"
+uid="uid://cxkukbkpsfj4l"
+path="res://.godot/imported/睡觉3.png-ff4739dc06c9bd93762a23088e009dd9.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://素材/牧羊人睡觉.png"
-dest_files=["res://.godot/imported/牧羊人睡觉.png-f5e4bf88b9c41a65bd44112a786d5a92.ctex"]
+source_file="res://素材/睡觉3.png"
+dest_files=["res://.godot/imported/睡觉3.png-ff4739dc06c9bd93762a23088e009dd9.ctex"]
 
 [params]
 

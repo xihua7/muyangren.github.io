@@ -16,10 +16,16 @@ const STATE_REST := 2
 const STATE_SLEEP := 3
 const REST_AFTER_SECONDS := 12.0
 const SLEEP_AFTER_SECONDS := 20.0
+const DISPLAY_HEIGHT_STAND := 52.0
+const DISPLAY_HEIGHT_TRAVEL := 52.0
+const DISPLAY_HEIGHT_REST := 44.0
+const DISPLAY_HEIGHT_SLEEP := 40.0
 
 const SHEPHERD_STAND: Texture2D = preload("res://素材/processed/shepherd_stand.png")
 const SHEPHERD_REST: Texture2D = preload("res://素材/processed/shepherd_rest.png")
-const SHEPHERD_SLEEP: Texture2D = preload("res://素材/processed/shepherd_sleep.png")
+const SHEPHERD_SLEEP_0: Texture2D = preload("res://素材/processed/shepherd_sleep_0.png")
+const SHEPHERD_SLEEP_1: Texture2D = preload("res://素材/processed/shepherd_sleep_1.png")
+const SHEPHERD_SLEEP_2: Texture2D = preload("res://素材/processed/shepherd_sleep_2.png")
 const SHEPHERD_TRAVEL_WALK_0: Texture2D = preload("res://素材/processed/shepherd_travel_walk_0.png")
 const SHEPHERD_TRAVEL_WALK_1: Texture2D = preload("res://素材/processed/shepherd_travel_walk_1.png")
 const SHEPHERD_TRAVEL_WALK_2: Texture2D = preload("res://素材/processed/shepherd_travel_walk_2.png")
@@ -41,6 +47,8 @@ var _was_on_floor := false
 var _idle_time := 0.0
 
 func _ready() -> void:
+	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+
 	var shape := RectangleShape2D.new()
 	shape.size = Vector2(14, 24)
 
@@ -114,7 +122,7 @@ func respawn(at_position: Vector2) -> void:
 func _draw() -> void:
 	var state: int = _current_state()
 	var texture: Texture2D = _texture_for_state(state)
-	var texture_size: Vector2 = texture.get_size()
+	var texture_size: Vector2 = _display_size_for_state(texture, state)
 	var bob: float = _pose_bob(state)
 	if is_on_floor():
 		draw_rect(Rect2(Vector2(-8, 7), Vector2(16, 3)), SHADOW)
@@ -143,9 +151,23 @@ func _texture_for_state(state: int) -> Texture2D:
 		STATE_REST:
 			return SHEPHERD_REST
 		STATE_SLEEP:
-			return SHEPHERD_SLEEP
+			return _sleep_texture()
 		_:
 			return SHEPHERD_STAND
+
+func _display_size_for_state(texture: Texture2D, state: int) -> Vector2:
+	var source_size := texture.get_size()
+	var display_height := DISPLAY_HEIGHT_STAND
+	match state:
+		STATE_TRAVEL:
+			display_height = DISPLAY_HEIGHT_TRAVEL
+		STATE_REST:
+			display_height = DISPLAY_HEIGHT_REST
+		STATE_SLEEP:
+			display_height = DISPLAY_HEIGHT_SLEEP
+		_:
+			display_height = DISPLAY_HEIGHT_STAND
+	return Vector2(source_size.x * display_height / source_size.y, display_height)
 
 func _travel_texture() -> Texture2D:
 	var frame_index: int = int(floor(_walk_time)) % 4
@@ -159,6 +181,16 @@ func _travel_texture() -> Texture2D:
 		_:
 			return SHEPHERD_TRAVEL_WALK_0
 
+func _sleep_texture() -> Texture2D:
+	var frame_index: int = int(floor(_pose_time * 3.0)) % 3
+	match frame_index:
+		1:
+			return SHEPHERD_SLEEP_1
+		2:
+			return SHEPHERD_SLEEP_2
+		_:
+			return SHEPHERD_SLEEP_0
+
 func _pose_bob(state: int) -> float:
 	if not is_on_floor():
 		return -1.0
@@ -168,7 +200,7 @@ func _pose_bob(state: int) -> float:
 		STATE_REST:
 			return sin(_pose_time * 1.5) * 0.25
 		STATE_SLEEP:
-			return sin(_pose_time * 1.0) * 0.25
+			return 0.0
 		_:
 			return sin(_pose_time * 2.0) * 0.25
 

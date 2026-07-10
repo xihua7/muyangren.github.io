@@ -14,7 +14,9 @@ const VARIANT_WALK := 2
 const VARIANT_RUN := 3
 
 const SHEEP_GRAZE: Texture2D = preload("res://素材/processed/sheep_graze_right.png")
-const SHEEP_SLEEP: Texture2D = preload("res://素材/processed/sheep_sleep.png")
+const SHEEP_SLEEP_0: Texture2D = preload("res://素材/processed/sheep_sleep_0.png")
+const SHEEP_SLEEP_1: Texture2D = preload("res://素材/processed/sheep_sleep_1.png")
+const SHEEP_SLEEP_2: Texture2D = preload("res://素材/processed/sheep_sleep_2.png")
 const SHEEP_WALK: Texture2D = preload("res://素材/processed/sheep_walk_right.png")
 const SHEEP_RUN: Texture2D = preload("res://素材/processed/sheep_run_right.png")
 
@@ -137,17 +139,27 @@ func _current_texture() -> Texture2D:
 		VARIANT_GRAZE:
 			return SHEEP_GRAZE
 		VARIANT_SLEEP:
-			return SHEEP_SLEEP
+			return _sleep_texture()
 		VARIANT_RUN:
 			return SHEEP_RUN
 		_:
 			return SHEEP_WALK
 
+func _sleep_texture() -> Texture2D:
+	var frame_index: int = int(floor(_phase * 1.5)) % 3
+	match frame_index:
+		1:
+			return SHEEP_SLEEP_1
+		2:
+			return SHEEP_SLEEP_2
+		_:
+			return SHEEP_SLEEP_0
+
 func _bottom_offset() -> float:
 	if _behavior == MODE_GRAZE:
 		return 1.0 + sin(_phase * 1.6) * 0.35
 	if _behavior == MODE_SLEEP:
-		return 1.0 + sin(_phase * 1.3) * 0.25
+		return 1.0
 	if _behavior == MODE_RUN:
 		return 1.0 + round(sin(_phase * 2.4))
 	return 1.0 + round(sin(_phase * 2.0))
