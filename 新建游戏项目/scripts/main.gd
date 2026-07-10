@@ -358,7 +358,7 @@ func _sheep_behavior_for_variant(variant: int) -> int:
 
 func _sheep_speed_for_behavior(behavior: int) -> float:
 	if behavior == PocketSheep.MODE_RUN:
-		return _rng.randf_range(18.0, 26.0)
+		return _rng.randf_range(34.0, 46.0)
 	if behavior == PocketSheep.MODE_WALK:
 		return _rng.randf_range(7.0, 13.0)
 	return 0.0

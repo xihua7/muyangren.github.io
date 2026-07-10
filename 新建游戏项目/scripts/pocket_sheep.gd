@@ -17,10 +17,20 @@ const SHEEP_GRAZE: Texture2D = preload("res://素材/processed/sheep_graze_right
 const SHEEP_SLEEP_0: Texture2D = preload("res://素材/processed/sheep_sleep_0.png")
 const SHEEP_SLEEP_1: Texture2D = preload("res://素材/processed/sheep_sleep_1.png")
 const SHEEP_SLEEP_2: Texture2D = preload("res://素材/processed/sheep_sleep_2.png")
-const SHEEP_WALK: Texture2D = preload("res://素材/processed/sheep_walk_right.png")
-const SHEEP_RUN: Texture2D = preload("res://素材/processed/sheep_run_right.png")
+const SHEEP_WALK_0: Texture2D = preload("res://素材/processed/sheep_walk_0.png")
+const SHEEP_WALK_1: Texture2D = preload("res://素材/processed/sheep_walk_1.png")
+const SHEEP_WALK_2: Texture2D = preload("res://素材/processed/sheep_walk_2.png")
+const SHEEP_RUN_0: Texture2D = preload("res://素材/processed/sheep_run_0.png")
+const SHEEP_RUN_1: Texture2D = preload("res://素材/processed/sheep_run_1.png")
+const SHEEP_RUN_2: Texture2D = preload("res://素材/processed/sheep_run_2.png")
+const SHEEP_RUN_3: Texture2D = preload("res://素材/processed/sheep_run_3.png")
+const SHEEP_RUN_4: Texture2D = preload("res://素材/processed/sheep_run_4.png")
 
 const SHADOW := Color(0.17, 0.22, 0.16, 0.22)
+const DISPLAY_HEIGHT_GRAZE := 34.0
+const DISPLAY_HEIGHT_SLEEP := 34.0
+const DISPLAY_HEIGHT_WALK := 28.0
+const DISPLAY_HEIGHT_RUN := 32.0
 
 var _behavior: int = MODE_WALK
 var _variant: int = VARIANT_WALK
@@ -35,6 +45,8 @@ var _pause_left: float = 0.0
 var _grass_seed: int = 0
 
 func _ready() -> void:
+	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+
 	var shape: RectangleShape2D = RectangleShape2D.new()
 	shape.size = Vector2(30, 28)
 
@@ -88,7 +100,10 @@ func _process(delta: float) -> void:
 	queue_redraw()
 
 func _walk(delta: float) -> void:
-	global_position.y = _base_y + round(sin(_phase * 1.4) * 0.5)
+	if _behavior == MODE_RUN:
+		global_position.y = _base_y + round(sin(_phase * 1.8) * 1.4)
+	else:
+		global_position.y = _base_y + round(sin(_phase * 1.4) * 0.5)
 	if _pause_left > 0.0:
 		_pause_left = max(_pause_left - delta, 0.0)
 		return
@@ -103,7 +118,10 @@ func _walk(delta: float) -> void:
 
 func _turn_around() -> void:
 	_direction *= -1
-	_pause_left = 0.12 + float(_grass_seed % 4) * 0.04
+	if _behavior == MODE_RUN:
+		_pause_left = 0.04 + float(_grass_seed % 3) * 0.02
+	else:
+		_pause_left = 0.12 + float(_grass_seed % 4) * 0.04
 
 func _on_body_entered(body: Node) -> void:
 	if _collected:
@@ -126,7 +144,7 @@ func _collect_into(player: Node2D) -> void:
 
 func _draw() -> void:
 	var texture: Texture2D = _current_texture()
-	var size: Vector2 = texture.get_size()
+	var size: Vector2 = _display_size_for_texture(texture)
 	var squash: float = _squash_scale()
 	var bottom_y: float = _bottom_offset()
 	var flip: bool = _should_flip()
@@ -141,9 +159,33 @@ func _current_texture() -> Texture2D:
 		VARIANT_SLEEP:
 			return _sleep_texture()
 		VARIANT_RUN:
-			return SHEEP_RUN
+			return _run_texture()
 		_:
-			return SHEEP_WALK
+			return _walk_texture()
+
+func _walk_texture() -> Texture2D:
+	var frame_index: int = int(floor(_phase * 2.0)) % 3
+	match frame_index:
+		1:
+			return SHEEP_WALK_1
+		2:
+			return SHEEP_WALK_2
+		_:
+			return SHEEP_WALK_0
+
+func _run_texture() -> Texture2D:
+	var frame_index: int = int(floor(_phase * 2.0)) % 5
+	match frame_index:
+		1:
+			return SHEEP_RUN_1
+		2:
+			return SHEEP_RUN_2
+		3:
+			return SHEEP_RUN_3
+		4:
+			return SHEEP_RUN_4
+		_:
+			return SHEEP_RUN_0
 
 func _sleep_texture() -> Texture2D:
 	var frame_index: int = int(floor(_phase * 1.5)) % 3
@@ -154,6 +196,20 @@ func _sleep_texture() -> Texture2D:
 			return SHEEP_SLEEP_2
 		_:
 			return SHEEP_SLEEP_0
+
+func _display_size_for_texture(texture: Texture2D) -> Vector2:
+	var source_size := texture.get_size()
+	var display_height := DISPLAY_HEIGHT_GRAZE
+	match _variant:
+		VARIANT_SLEEP:
+			display_height = DISPLAY_HEIGHT_SLEEP
+		VARIANT_RUN:
+			display_height = DISPLAY_HEIGHT_RUN
+		VARIANT_WALK:
+			display_height = DISPLAY_HEIGHT_WALK
+		_:
+			display_height = DISPLAY_HEIGHT_GRAZE
+	return Vector2(source_size.x * display_height / source_size.y, display_height)
 
 func _bottom_offset() -> float:
 	if _behavior == MODE_GRAZE:
@@ -168,12 +224,10 @@ func _squash_scale() -> float:
 	return 1.0
 
 func _should_flip() -> bool:
-	if _behavior == MODE_RUN:
-		return _direction > 0
 	return _direction < 0
 
 func _draw_texture(texture: Texture2D, bottom_y: float, flip: bool, y_scale: float) -> void:
-	var size: Vector2 = texture.get_size()
+	var size: Vector2 = _display_size_for_texture(texture)
 	var x_scale: float = -1.0 if flip else 1.0
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2(x_scale, y_scale))
 	draw_texture_rect(

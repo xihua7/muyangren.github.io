@@ -20,6 +20,8 @@ const DISPLAY_HEIGHT_STAND := 52.0
 const DISPLAY_HEIGHT_TRAVEL := 52.0
 const DISPLAY_HEIGHT_REST := 44.0
 const DISPLAY_HEIGHT_SLEEP := 40.0
+const WALK_SOUND: AudioStream = preload("res://素材/音乐/走路声 .mp3")
+const WALK_SOUND_VOLUME_DB := -15.0
 
 const SHEPHERD_STAND: Texture2D = preload("res://素材/processed/shepherd_stand.png")
 const SHEPHERD_REST: Texture2D = preload("res://素材/processed/shepherd_rest.png")
@@ -31,7 +33,6 @@ const SHEPHERD_TRAVEL_WALK_1: Texture2D = preload("res://素材/processed/shephe
 const SHEPHERD_TRAVEL_WALK_2: Texture2D = preload("res://素材/processed/shepherd_travel_walk_2.png")
 const SHEPHERD_TRAVEL_WALK_3: Texture2D = preload("res://素材/processed/shepherd_travel_walk_3.png")
 const SHADOW := Color(0.18, 0.24, 0.17, 0.22)
-const POCKET_WOOL := Color("#f5efd9")
 
 var pocket_count := 0
 var pocket_capacity := 0
@@ -45,9 +46,11 @@ var _walk_time := 0.0
 var _pose_time := 0.0
 var _was_on_floor := false
 var _idle_time := 0.0
+var _walk_sound_player: AudioStreamPlayer
 
 func _ready() -> void:
 	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	_create_audio_players()
 
 	var shape := RectangleShape2D.new()
 	shape.size = Vector2(14, 24)
@@ -67,7 +70,7 @@ func _physics_process(delta: float) -> void:
 	elif direction < 0.0:
 		input_direction = -1
 
-	var has_user_input := controls_enabled and (direction != 0.0 or Input.is_action_pressed("jump"))
+	var has_user_input: bool = controls_enabled and (direction != 0.0 or Input.is_action_pressed("jump"))
 	if has_user_input:
 		_idle_time = 0.0
 	elif not controls_enabled:
@@ -113,11 +116,34 @@ func _physics_process(delta: float) -> void:
 	if _was_on_floor != is_on_floor() or abs(velocity.x) > 0.5 or state == STATE_STAND or state == STATE_REST or state == STATE_SLEEP:
 		queue_redraw()
 	_was_on_floor = is_on_floor()
+	_update_walk_sound()
 
 func respawn(at_position: Vector2) -> void:
 	global_position = at_position
 	velocity = Vector2.ZERO
+	_update_walk_sound()
 	queue_redraw()
+
+func _create_audio_players() -> void:
+	_walk_sound_player = AudioStreamPlayer.new()
+	_walk_sound_player.name = "WalkSound"
+	_walk_sound_player.stream = WALK_SOUND
+	if _walk_sound_player.stream is AudioStreamMP3:
+		var walk_stream := _walk_sound_player.stream as AudioStreamMP3
+		walk_stream.loop = true
+	_walk_sound_player.volume_db = WALK_SOUND_VOLUME_DB
+	add_child(_walk_sound_player)
+
+func _update_walk_sound() -> void:
+	if not _walk_sound_player:
+		return
+
+	var should_play: bool = controls_enabled and is_on_floor() and abs(velocity.x) > 2.0
+	if should_play:
+		if not _walk_sound_player.playing:
+			_walk_sound_player.play()
+	elif _walk_sound_player.playing:
+		_walk_sound_player.stop()
 
 func _draw() -> void:
 	var state: int = _current_state()
@@ -127,12 +153,6 @@ func _draw() -> void:
 	if is_on_floor():
 		draw_rect(Rect2(Vector2(-8, 7), Vector2(16, 3)), SHADOW)
 	_draw_shepherd_texture(texture, Vector2(-texture_size.x * 0.5, 9.0 - texture_size.y + bob), texture_size, _should_flip_texture())
-
-	if pocket_capacity > 0 and pocket_count > 0:
-		var pocket_limit: int = max(1, pocket_capacity)
-		var wool_count: int = clamp(pocket_count, 0, pocket_limit)
-		for i in range(min(wool_count, 5)):
-			draw_rect(Rect2(Vector2(-9 + i * 3, -3 + bob), Vector2(2, 2)), POCKET_WOOL)
 
 func _current_state() -> int:
 	var can_idle_state: bool = is_on_floor() and abs(velocity.x) <= 2.0
