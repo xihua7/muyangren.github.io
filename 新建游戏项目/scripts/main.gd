@@ -30,6 +30,11 @@ const LEVEL_SPRING := 0
 const LEVEL_SUMMER := 1
 const LEVEL_AUTUMN := 2
 const LEVEL_WINTER := 3
+const TITLE_COVER_TEXTURE: Texture2D = preload("res://素材/游戏封面.png")
+const TITLE_COVER_REGION := Rect2(0, 521, 2385, 1343)
+const TITLE_START_BUTTON_TEXTURE: Texture2D = preload("res://素材/processed/title_start_button.png")
+const TITLE_TUTORIAL_BUTTON_TEXTURE: Texture2D = preload("res://素材/processed/title_tutorial_button.png")
+const TITLE_QUIT_BUTTON_TEXTURE: Texture2D = preload("res://素材/processed/title_quit_button.png")
 const BACKGROUND_MUSIC: AudioStream = preload("res://素材/音乐/背景音效.MP3")
 const BACKGROUND_MUSIC_VOLUME_DB := -12.0
 
@@ -69,7 +74,8 @@ func _ready() -> void:
 	_create_audio_players()
 	_create_hud()
 	_reset_level(false)
-	_create_title_screen()
+	_set_world_visible(false)
+	_create_cover_title_screen()
 
 func _process(_delta: float) -> void:
 	if not _game_started:
@@ -93,6 +99,9 @@ func _process(_delta: float) -> void:
 		_update_camera_follow()
 
 func _draw() -> void:
+	if not _game_started:
+		return
+
 	var colors := _season_colors()
 	var sky: Color = colors["sky"]
 	var far_hill: Color = colors["far_hill"]
@@ -463,6 +472,95 @@ func _create_hud() -> void:
 	_status_label.visible = false
 	layer.add_child(_status_label)
 
+func _set_world_visible(visible: bool) -> void:
+	if _player:
+		_player.visible = visible
+	for sheep in get_tree().get_nodes_in_group("sheep"):
+		sheep.visible = visible
+	if _counter_label:
+		_counter_label.get_parent().visible = visible
+
+func _create_cover_title_screen() -> void:
+	_title_layer = CanvasLayer.new()
+	_title_layer.layer = 20
+	add_child(_title_layer)
+
+	var root := Control.new()
+	root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_title_layer.add_child(root)
+
+	var cover := TextureRect.new()
+	cover.texture = _atlas_texture(TITLE_COVER_TEXTURE, TITLE_COVER_REGION)
+	cover.set_anchors_preset(Control.PRESET_FULL_RECT)
+	cover.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	cover.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	root.add_child(cover)
+
+	_create_hover_title_button(root, TITLE_START_BUTTON_TEXTURE, Vector2(200, 77), Vector2(81, 29), Callable(self, "_start_game"))
+	_create_hover_title_button(root, TITLE_TUTORIAL_BUTTON_TEXTURE, Vector2(200, 109), Vector2(81, 29), Callable(self, "_show_cover_tutorial"))
+	_create_hover_title_button(root, TITLE_QUIT_BUTTON_TEXTURE, Vector2(200, 142), Vector2(81, 29), Callable(self, "_quit_game"))
+
+func _atlas_texture(source: Texture2D, region: Rect2) -> AtlasTexture:
+	var atlas := AtlasTexture.new()
+	atlas.atlas = source
+	atlas.region = region
+	return atlas
+
+func _create_hover_title_button(parent: Control, texture: Texture2D, position: Vector2, size: Vector2, callback: Callable) -> TextureButton:
+	var button := TextureButton.new()
+	button.position = position
+	button.size = size
+	button.texture_hover = texture
+	button.texture_pressed = texture
+	button.ignore_texture_size = true
+	button.stretch_mode = TextureButton.STRETCH_SCALE
+	button.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	button.focus_mode = Control.FOCUS_NONE
+	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	button.pressed.connect(callback)
+	parent.add_child(button)
+	return button
+
+func _show_cover_tutorial() -> void:
+	if not _title_layer:
+		return
+	var existing := _title_layer.get_node_or_null("TutorialPopup")
+	if existing:
+		existing.queue_free()
+		return
+
+	var popup := Control.new()
+	popup.name = "TutorialPopup"
+	popup.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_title_layer.add_child(popup)
+
+	var shade := ColorRect.new()
+	shade.color = Color(0.05, 0.07, 0.05, 0.62)
+	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
+	popup.add_child(shade)
+
+	var panel := ColorRect.new()
+	panel.color = Color(0.78, 0.68, 0.50, 0.97)
+	panel.position = Vector2(110, 62)
+	panel.size = Vector2(260, 132)
+	popup.add_child(panel)
+
+	var text := Label.new()
+	text.text = "游戏说明\n\nA/D 或方向键移动\nSpace/W/上方向键跳跃\n收集每一关的 7 只小羊\n收齐后到达山顶旗子进入下一季\nR 重新开始当前关"
+	text.position = Vector2(126, 75)
+	text.size = Vector2(228, 86)
+	text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	text.add_theme_font_size_override("font_size", 11)
+	text.add_theme_color_override("font_color", Color("#3d2c1c"))
+	popup.add_child(text)
+
+	var close := Button.new()
+	close.text = "返回"
+	close.position = Vector2(204, 163)
+	close.size = Vector2(72, 24)
+	close.pressed.connect(Callable(popup, "queue_free"))
+	popup.add_child(close)
+
 func _create_title_screen() -> void:
 	_title_layer = CanvasLayer.new()
 	_title_layer.layer = 20
@@ -528,6 +626,7 @@ func _start_game() -> void:
 		_title_layer.visible = false
 	_level_index = LEVEL_SPRING
 	_reset_level()
+	_set_world_visible(true)
 
 func _quit_game() -> void:
 	get_tree().quit()
