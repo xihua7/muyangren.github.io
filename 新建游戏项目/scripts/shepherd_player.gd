@@ -5,10 +5,13 @@ const SPEED := 126.0
 const ACCELERATION := 880.0
 const FRICTION := 1020.0
 const JUMP_VELOCITY := -318.0
+const HIGH_JUMP_VELOCITY := -410.0
 const GRAVITY := 880.0
 const MAX_FALL_SPEED := 420.0
 const COYOTE_TIME := 0.09
 const JUMP_BUFFER_TIME := 0.11
+const HIGH_JUMP_TAP_WINDOW := 0.28
+const HIGH_JUMP_CUT_GRACE := 0.12
 
 const STATE_STAND := 0
 const STATE_TRAVEL := 1
@@ -42,6 +45,9 @@ var controls_enabled := true
 var _facing := 1
 var _coyote_left := 0.0
 var _jump_buffer_left := 0.0
+var _high_jump_tap_left := 0.0
+var _high_jump_cut_grace_left := 0.0
+var _high_jump_available := false
 var _walk_time := 0.0
 var _pose_time := 0.0
 var _was_on_floor := false
@@ -79,6 +85,7 @@ func _physics_process(delta: float) -> void:
 		_idle_time += delta
 
 	_pose_time += delta
+	_high_jump_cut_grace_left = max(_high_jump_cut_grace_left - delta, 0.0)
 
 	if direction != 0.0:
 		_facing = input_direction
@@ -88,12 +95,21 @@ func _physics_process(delta: float) -> void:
 
 	if is_on_floor():
 		_coyote_left = COYOTE_TIME
+		_high_jump_available = false
 	else:
 		_coyote_left = max(_coyote_left - delta, 0.0)
+		_high_jump_tap_left = max(_high_jump_tap_left - delta, 0.0)
 		velocity.y = min(velocity.y + GRAVITY * delta, MAX_FALL_SPEED)
 
 	if controls_enabled and Input.is_action_just_pressed("jump"):
-		_jump_buffer_left = JUMP_BUFFER_TIME
+		if _high_jump_available and _high_jump_tap_left > 0.0:
+			velocity.y = HIGH_JUMP_VELOCITY
+			_high_jump_available = false
+			_high_jump_tap_left = 0.0
+			_high_jump_cut_grace_left = HIGH_JUMP_CUT_GRACE
+			_jump_buffer_left = 0.0
+		else:
+			_jump_buffer_left = JUMP_BUFFER_TIME
 	else:
 		_jump_buffer_left = max(_jump_buffer_left - delta, 0.0)
 
@@ -101,8 +117,10 @@ func _physics_process(delta: float) -> void:
 		velocity.y = JUMP_VELOCITY
 		_jump_buffer_left = 0.0
 		_coyote_left = 0.0
+		_high_jump_available = true
+		_high_jump_tap_left = HIGH_JUMP_TAP_WINDOW
 
-	if controls_enabled and Input.is_action_just_released("jump") and velocity.y < -80.0:
+	if controls_enabled and Input.is_action_just_released("jump") and velocity.y < -80.0 and _high_jump_cut_grace_left <= 0.0:
 		velocity.y *= 0.45
 
 	move_and_slide()
@@ -121,6 +139,9 @@ func _physics_process(delta: float) -> void:
 func respawn(at_position: Vector2) -> void:
 	global_position = at_position
 	velocity = Vector2.ZERO
+	_high_jump_available = false
+	_high_jump_tap_left = 0.0
+	_high_jump_cut_grace_left = 0.0
 	_update_walk_sound()
 	queue_redraw()
 

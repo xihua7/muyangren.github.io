@@ -1,7 +1,7 @@
 extends Node2D
 
 const WORLD_LEFT := -80
-const WORLD_RIGHT := 1120
+const WORLD_RIGHT := 1200
 const FALL_LIMIT := 360.0
 
 const SKY := Color("#a9b9a6")
@@ -22,6 +22,7 @@ const INTRO_START_HOLD := 0.45
 const INTRO_PAN_SECONDS := 3.0
 const INTRO_END_HOLD := 0.55
 const INTRO_RETURN_SECONDS := 2.2
+const LEVEL_CLEAR_DELAY_SECONDS := 1.0
 const LEVEL_COUNT := 4
 const LEVEL_NAMES := ["春天", "夏天", "秋天", "冬天"]
 const START_POSITION := Vector2(36, 222)
@@ -35,14 +36,38 @@ const TITLE_COVER_REGION := Rect2(0, 521, 2385, 1343)
 const TITLE_START_BUTTON_TEXTURE: Texture2D = preload("res://素材/processed/title_start_button.png")
 const TITLE_TUTORIAL_BUTTON_TEXTURE: Texture2D = preload("res://素材/processed/title_tutorial_button.png")
 const TITLE_QUIT_BUTTON_TEXTURE: Texture2D = preload("res://素材/processed/title_quit_button.png")
+const RESULT_HOME_BUTTON_TEXTURE: Texture2D = preload("res://素材/processed/result_home_button.png")
+const RESULT_NEXT_BUTTON_TEXTURE: Texture2D = preload("res://素材/processed/result_next_button.png")
+const RESULT_RESTART_BUTTON_TEXTURE: Texture2D = preload("res://素材/processed/result_restart_button.png")
+const LEVEL_FAIL_TEXTURE: Texture2D = preload("res://素材/角色/失败卡.png")
+const LEVEL_CLEAR_TEXTURE: Texture2D = preload("res://素材/角色/通关卡.png")
 const BACKGROUND_MUSIC: AudioStream = preload("res://素材/音乐/背景音效.MP3")
+const SHEEP_COLLECT_SOUND: AudioStream = preload("res://素材/音乐/小羊叫.MP3")
+const BUTTON_SOUND: AudioStream = preload("res://素材/音乐/按钮声.MP3")
+const LEVEL_CLEAR_SOUND: AudioStream = preload("res://素材/音乐/通关音效.mp3")
+const LEVEL_FAIL_SOUND: AudioStream = preload("res://素材/音乐/失败音效.mp3")
 const BACKGROUND_MUSIC_VOLUME_DB := -12.0
+const SHEEP_COLLECT_SOUND_VOLUME_DB := -6.0
+const BUTTON_SOUND_VOLUME_DB := -8.0
+const LEVEL_CLEAR_SOUND_VOLUME_DB := -6.0
+const LEVEL_FAIL_SOUND_VOLUME_DB := -6.0
+const TITLE_BUTTON_PRESS_SCALE := 0.92
+const TITLE_BUTTON_POP_SCALE := 1.08
+const RESULT_CLEAR_LEFT_BUTTON_POSITION := Vector2(147, 218)
+const RESULT_CLEAR_RIGHT_BUTTON_POSITION := Vector2(249, 218)
+const RESULT_FAIL_LEFT_BUTTON_POSITION := Vector2(147, 227)
+const RESULT_FAIL_RIGHT_BUTTON_POSITION := Vector2(249, 227)
+const RESULT_BUTTON_SIZE := Vector2(84, 30)
 
 var _player: ShepherdPlayer
 var _camera: Camera2D
 var _counter_label: Label
 var _status_label: Label
 var _background_music_player: AudioStreamPlayer
+var _sheep_collect_sound_player: AudioStreamPlayer
+var _button_sound_player: AudioStreamPlayer
+var _level_clear_sound_player: AudioStreamPlayer
+var _level_fail_sound_player: AudioStreamPlayer
 var _collected := 0
 var _total_sheep := 0
 var _won := false
@@ -50,20 +75,14 @@ var _last_checkpoint := START_POSITION
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var _intro_active := false
 var _intro_tween: Tween
+var _level_clear_tween: Tween
 var _level_index := LEVEL_SPRING
 var _game_started := false
 var _title_layer: CanvasLayer
+var _result_layer: CanvasLayer
+var _mushroom_platform_index: int = -1
 
-var _platforms := [
-	Rect2(Vector2(-60, 230), Vector2(230, 24)),
-	Rect2(Vector2(182, 204), Vector2(82, 18)),
-	Rect2(Vector2(304, 176), Vector2(78, 18)),
-	Rect2(Vector2(430, 148), Vector2(84, 18)),
-	Rect2(Vector2(562, 121), Vector2(86, 18)),
-	Rect2(Vector2(704, 94), Vector2(92, 18)),
-	Rect2(Vector2(858, 67), Vector2(94, 18)),
-	Rect2(Vector2(994, 42), Vector2(120, 20)),
-]
+var _platforms: Array[Rect2] = []
 
 func _ready() -> void:
 	_rng.randomize()
@@ -82,9 +101,13 @@ func _process(_delta: float) -> void:
 		if Input.is_action_just_pressed("jump"):
 			_start_game()
 		return
+	if _result_layer:
+		return
 
 	if _player.global_position.y > FALL_LIMIT:
-		_player.respawn(_last_checkpoint)
+		_cancel_level_clear_delay()
+		_show_level_result(false)
+		return
 
 	if _player.is_on_floor() and _player.global_position.x > _last_checkpoint.x + 38.0:
 		_last_checkpoint = _player.global_position
@@ -92,8 +115,9 @@ func _process(_delta: float) -> void:
 	if Input.is_action_just_pressed("restart"):
 		_reset_level()
 
-	if not _won and _collected == _total_sheep and _player.global_position.x > 990.0:
+	if not _won and _collected == _total_sheep and _is_player_on_summit_platform():
 		_complete_level()
+		return
 
 	if not _intro_active:
 		_update_camera_follow()
@@ -141,24 +165,37 @@ func _draw() -> void:
 		)
 
 	_draw_ground_details(colors)
-	_draw_summit_flag(Vector2(1062, 18), sky)
+	_draw_summit_flag(_summit_flag_position(), sky)
 
 func _create_world() -> void:
+	_rebuild_platforms()
+
+func _rebuild_platforms() -> void:
+	for platform in get_tree().get_nodes_in_group("season_platforms"):
+		platform.free()
+	_platforms = _platform_layout_for_level(_level_index)
 	for rect in _platforms:
 		var platform := HillPlatform.new()
 		add_child(platform)
+		platform.add_to_group("season_platforms")
 		platform.setup(rect)
+		platform.set_season(_level_index)
 
 func _reset_level(start_preview: bool = true) -> void:
 	if _intro_tween and _intro_tween.is_valid():
 		_intro_tween.kill()
+	_cancel_level_clear_delay()
 
+	_rebuild_platforms()
 	_collected = 0
 	_total_sheep = 0
 	_won = false
 	_last_checkpoint = START_POSITION
 	_clear_sheep()
+	_clear_mushrooms()
+	_mushroom_platform_index = _mushroom_platform_index_for_level()
 	_spawn_random_sheep()
+	_spawn_mushroom_bad()
 
 	if _player:
 		_player.pocket_count = 0
@@ -178,6 +215,12 @@ func _reset_level(start_preview: bool = true) -> void:
 func _clear_sheep() -> void:
 	for sheep in get_tree().get_nodes_in_group("sheep"):
 		sheep.free()
+
+func _clear_mushrooms() -> void:
+	for mushroom in get_tree().get_nodes_in_group("mushrooms"):
+		mushroom.free()
+	for projectile in get_tree().get_nodes_in_group("mushroom_projectiles"):
+		projectile.free()
 
 func _spawn_random_sheep() -> void:
 	var slots: Array[Dictionary] = _make_sheep_spawn_slots(SHEEP_COUNT)
@@ -213,6 +256,54 @@ func _spawn_random_sheep() -> void:
 
 	_total_sheep = SHEEP_COUNT
 
+func _spawn_mushroom_bad() -> void:
+	var platform_index: int = _mushroom_platform_index
+	if platform_index < 0 or platform_index >= _platforms.size():
+		return
+	var rect: Rect2 = _platforms[platform_index]
+	var mushroom: MushroomBad = MushroomBad.new()
+	add_child(mushroom)
+	mushroom.add_to_group("mushrooms")
+	mushroom.global_position = Vector2(rect.position.x + rect.size.x * 0.5, rect.position.y - 1.0)
+	var direction: int = 1 if _level_index % 2 == 0 else -1
+	var mode: int = _mushroom_mode_for_level()
+	var speed: float = 0.0
+	if mode == MushroomBad.MODE_WALK:
+		speed = 8.0 + float(_level_index) * 2.0
+	mushroom.setup(
+		rect.position.x + 18.0,
+		rect.end.x - 18.0,
+		direction,
+		speed,
+		mode
+	)
+	mushroom.player_touched.connect(_on_mushroom_touched)
+
+func _mushroom_platform_index_for_level() -> int:
+	match _level_index:
+		LEVEL_SUMMER:
+			return 4
+		LEVEL_AUTUMN:
+			return 5
+		LEVEL_WINTER:
+			return 5
+		_:
+			return -1
+
+func _mushroom_mode_for_level() -> int:
+	match _level_index:
+		LEVEL_SUMMER:
+			return MushroomBad.MODE_STAND
+		LEVEL_WINTER:
+			return MushroomBad.MODE_ATTACK
+		_:
+			return MushroomBad.MODE_WALK
+
+func _on_mushroom_touched() -> void:
+	if _result_layer:
+		return
+	_show_level_result(false)
+
 func _make_sheep_spawn_slots(total: int) -> Array[Dictionary]:
 	var slots: Array[Dictionary] = []
 	var capacities: Array[int] = []
@@ -224,6 +315,8 @@ func _make_sheep_spawn_slots(total: int) -> Array[Dictionary]:
 		var min_x: float = _sheep_min_x(rect, platform_index)
 		var max_x: float = _sheep_max_x(rect)
 		var capacity: int = min(SHEEP_MAX_PER_PLATFORM, _sheep_platform_capacity(min_x, max_x))
+		if (_level_index == LEVEL_SUMMER or _level_index == LEVEL_WINTER) and platform_index == _mushroom_platform_index:
+			capacity = 0
 		capacities.append(capacity)
 		platform_counts.append(0)
 		total_capacity += capacity
@@ -336,16 +429,32 @@ func _sort_sheep_slots_by_x(a: Dictionary, b: Dictionary) -> bool:
 	return float(a["x"]) < float(b["x"])
 
 func _random_allowed_sheep_variant(index: int) -> int:
-	var guaranteed: Array[int] = [
-		PocketSheep.VARIANT_SLEEP,
-		PocketSheep.VARIANT_GRAZE,
-		PocketSheep.VARIANT_WALK,
-		PocketSheep.VARIANT_RUN,
-	]
+	var guaranteed: Array[int] = []
+	if _level_index == LEVEL_AUTUMN or _level_index == LEVEL_WINTER:
+		guaranteed = [
+			PocketSheep.VARIANT_SLEEP,
+			PocketSheep.VARIANT_WALK,
+			PocketSheep.VARIANT_RUN,
+			PocketSheep.VARIANT_WALK,
+		]
+	else:
+		guaranteed = [
+			PocketSheep.VARIANT_SLEEP,
+			PocketSheep.VARIANT_GRAZE,
+			PocketSheep.VARIANT_WALK,
+			PocketSheep.VARIANT_RUN,
+		]
 	if index < guaranteed.size():
 		return guaranteed[index]
 
 	var roll: float = _rng.randf()
+	if _level_index == LEVEL_AUTUMN or _level_index == LEVEL_WINTER:
+		if roll < 0.34:
+			return PocketSheep.VARIANT_SLEEP
+		if roll < 0.72:
+			return PocketSheep.VARIANT_WALK
+		return PocketSheep.VARIANT_RUN
+
 	if roll < 0.25:
 		return PocketSheep.VARIANT_SLEEP
 	if roll < 0.5:
@@ -414,11 +523,38 @@ func _create_audio_players() -> void:
 	add_child(_background_music_player)
 	_background_music_player.play()
 
+	_sheep_collect_sound_player = AudioStreamPlayer.new()
+	_sheep_collect_sound_player.name = "SheepCollectSound"
+	_sheep_collect_sound_player.stream = SHEEP_COLLECT_SOUND
+	_sheep_collect_sound_player.volume_db = SHEEP_COLLECT_SOUND_VOLUME_DB
+	add_child(_sheep_collect_sound_player)
+
+	_button_sound_player = AudioStreamPlayer.new()
+	_button_sound_player.name = "ButtonSound"
+	_button_sound_player.stream = BUTTON_SOUND
+	_button_sound_player.volume_db = BUTTON_SOUND_VOLUME_DB
+	add_child(_button_sound_player)
+
+	_level_clear_sound_player = AudioStreamPlayer.new()
+	_level_clear_sound_player.name = "LevelClearSound"
+	_level_clear_sound_player.stream = LEVEL_CLEAR_SOUND
+	_level_clear_sound_player.volume_db = LEVEL_CLEAR_SOUND_VOLUME_DB
+	add_child(_level_clear_sound_player)
+
+	_level_fail_sound_player = AudioStreamPlayer.new()
+	_level_fail_sound_player.name = "LevelFailSound"
+	_level_fail_sound_player.stream = LEVEL_FAIL_SOUND
+	_level_fail_sound_player.volume_db = LEVEL_FAIL_SOUND_VOLUME_DB
+	add_child(_level_fail_sound_player)
+
 func _camera_follow_target() -> Vector2:
 	return _player.global_position + CAMERA_FOLLOW_OFFSET
 
 func _camera_preview_target() -> Vector2:
-	return Vector2(1036, 28)
+	if _platforms.is_empty():
+		return Vector2(1036, 28)
+	var summit: Rect2 = _platforms[_platforms.size() - 1]
+	return Vector2(summit.position.x + summit.size.x * 0.5, summit.position.y - 14.0)
 
 func _update_camera_follow() -> void:
 	_camera.global_position = _camera_follow_target()
@@ -477,6 +613,10 @@ func _set_world_visible(visible: bool) -> void:
 		_player.visible = visible
 	for sheep in get_tree().get_nodes_in_group("sheep"):
 		sheep.visible = visible
+	for mushroom in get_tree().get_nodes_in_group("mushrooms"):
+		mushroom.visible = visible
+	for projectile in get_tree().get_nodes_in_group("mushroom_projectiles"):
+		projectile.visible = visible
 	if _counter_label:
 		_counter_label.get_parent().visible = visible
 
@@ -510,6 +650,7 @@ func _create_hover_title_button(parent: Control, texture: Texture2D, position: V
 	var button := TextureButton.new()
 	button.position = position
 	button.size = size
+	button.pivot_offset = size * 0.5
 	button.texture_hover = texture
 	button.texture_pressed = texture
 	button.ignore_texture_size = true
@@ -517,9 +658,49 @@ func _create_hover_title_button(parent: Control, texture: Texture2D, position: V
 	button.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	button.focus_mode = Control.FOCUS_NONE
 	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	button.pressed.connect(callback)
+	button.pressed.connect(Callable(self, "_press_title_button").bind(button, callback))
 	parent.add_child(button)
 	return button
+
+func _press_title_button(button: TextureButton, callback: Callable) -> void:
+	_play_button_sound()
+	button.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var tween := create_tween()
+	tween.tween_property(button, "scale", Vector2(TITLE_BUTTON_PRESS_SCALE, TITLE_BUTTON_PRESS_SCALE), 0.06).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tween.tween_property(button, "scale", Vector2(TITLE_BUTTON_POP_SCALE, TITLE_BUTTON_POP_SCALE), 0.08).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tween.tween_property(button, "scale", Vector2.ONE, 0.06).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tween.tween_callback(callback)
+	tween.tween_callback(func() -> void:
+		if is_instance_valid(button):
+			button.mouse_filter = Control.MOUSE_FILTER_STOP
+	)
+
+func _play_button_sound() -> void:
+	if not _button_sound_player:
+		return
+	_button_sound_player.stop()
+	_button_sound_player.play()
+
+func _play_level_result_sound(passed: bool) -> void:
+	_stop_background_music()
+	var player: AudioStreamPlayer = _level_clear_sound_player if passed else _level_fail_sound_player
+	if not player:
+		return
+	player.stop()
+	player.play()
+
+func _stop_background_music() -> void:
+	if _background_music_player and _background_music_player.playing:
+		_background_music_player.stop()
+
+func _play_background_music() -> void:
+	if _background_music_player and not _background_music_player.playing:
+		_background_music_player.play()
+
+func _cancel_level_clear_delay() -> void:
+	if _level_clear_tween and _level_clear_tween.is_valid():
+		_level_clear_tween.kill()
+	_level_clear_tween = null
 
 func _show_cover_tutorial() -> void:
 	if not _title_layer:
@@ -541,22 +722,22 @@ func _show_cover_tutorial() -> void:
 
 	var panel := ColorRect.new()
 	panel.color = Color(0.78, 0.68, 0.50, 0.97)
-	panel.position = Vector2(110, 62)
-	panel.size = Vector2(260, 132)
+	panel.position = Vector2(100, 45)
+	panel.size = Vector2(280, 172)
 	popup.add_child(panel)
 
 	var text := Label.new()
-	text.text = "游戏说明\n\nA/D 或方向键移动\nSpace/W/上方向键跳跃\n收集每一关的 7 只小羊\n收齐后到达山顶旗子进入下一季\nR 重新开始当前关"
-	text.position = Vector2(126, 75)
-	text.size = Vector2(228, 86)
+	text.text = "游戏说明\n\nA/D 或方向键移动\nSpace/W/上方向键跳跃\n起跳后快速再按一次可跳得更高\n收集每关 7 只小羊后到山顶旗子通关\n碰到红蘑菇或小红球会失败\nR 重新开始当前关"
+	text.position = Vector2(116, 58)
+	text.size = Vector2(248, 122)
 	text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	text.add_theme_font_size_override("font_size", 11)
+	text.add_theme_font_size_override("font_size", 10)
 	text.add_theme_color_override("font_color", Color("#3d2c1c"))
 	popup.add_child(text)
 
 	var close := Button.new()
 	close.text = "返回"
-	close.position = Vector2(204, 163)
+	close.position = Vector2(204, 185)
 	close.size = Vector2(72, 24)
 	close.pressed.connect(Callable(popup, "queue_free"))
 	popup.add_child(close)
@@ -594,11 +775,11 @@ func _create_title_screen() -> void:
 	root.add_child(tutorial_title)
 
 	var tutorial := Label.new()
-	tutorial.text = "A/D 或方向键移动\nSpace/W/上方向键跳跃\n收集每一关的 7 只小羊\n收齐后到达山顶旗子进入下一季\nR 重开当前关"
+	tutorial.text = "A/D 或方向键移动\nSpace/W/上方向键跳跃\n起跳后快速再按一次可跳得更高\n收集 7 只小羊后到山顶旗子通关\n碰到红蘑菇或小红球会失败\nR 重开当前关"
 	tutorial.position = Vector2(80, 99)
-	tutorial.size = Vector2(320, 82)
+	tutorial.size = Vector2(320, 96)
 	tutorial.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	tutorial.add_theme_font_size_override("font_size", 12)
+	tutorial.add_theme_font_size_override("font_size", 11)
 	tutorial.add_theme_color_override("font_color", Color("#e6ead4"))
 	root.add_child(tutorial)
 
@@ -633,25 +814,133 @@ func _quit_game() -> void:
 
 func _complete_level() -> void:
 	_won = true
-	_player.controls_enabled = false
-	if _level_index >= LEVEL_COUNT - 1:
-		_status_label.text = "四季都走完了"
+	if _status_label:
+		_status_label.text = "太棒了"
 		_status_label.visible = true
+	_cancel_level_clear_delay()
+	_level_clear_tween = create_tween()
+	_level_clear_tween.tween_interval(LEVEL_CLEAR_DELAY_SECONDS)
+	_level_clear_tween.tween_callback(func() -> void:
+		if _won and not _result_layer:
+			_show_level_result(true)
+	)
+
+func _show_level_result(passed: bool) -> void:
+	if _result_layer:
 		return
+	_cancel_level_clear_delay()
+	if _intro_tween and _intro_tween.is_valid():
+		_intro_tween.kill()
+	_intro_active = false
+	_won = passed
+	_player.controls_enabled = false
+	if _status_label:
+		_status_label.visible = false
+	_play_level_result_sound(passed)
 
-	_status_label.text = "进入%s" % LEVEL_NAMES[_level_index + 1]
-	_status_label.visible = true
+	_result_layer = CanvasLayer.new()
+	_result_layer.layer = 30
+	add_child(_result_layer)
 
-	var tween: Tween = create_tween()
-	tween.tween_interval(0.9)
-	tween.tween_callback(_advance_level)
+	var root := Control.new()
+	root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_result_layer.add_child(root)
+
+	var card := TextureRect.new()
+	card.texture = LEVEL_CLEAR_TEXTURE if passed else LEVEL_FAIL_TEXTURE
+	card.set_anchors_preset(Control.PRESET_FULL_RECT)
+	card.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	card.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	root.add_child(card)
+
+	if passed:
+		_create_result_button(root, RESULT_NEXT_BUTTON_TEXTURE, RESULT_CLEAR_LEFT_BUTTON_POSITION, RESULT_BUTTON_SIZE, Callable(self, "_advance_level_or_home"))
+		_create_result_button(root, RESULT_HOME_BUTTON_TEXTURE, RESULT_CLEAR_RIGHT_BUTTON_POSITION, RESULT_BUTTON_SIZE, Callable(self, "_return_to_title"))
+	else:
+		_create_result_button(root, RESULT_RESTART_BUTTON_TEXTURE, RESULT_FAIL_LEFT_BUTTON_POSITION, RESULT_BUTTON_SIZE, Callable(self, "_restart_current_level"))
+		_create_result_button(root, RESULT_HOME_BUTTON_TEXTURE, RESULT_FAIL_RIGHT_BUTTON_POSITION, RESULT_BUTTON_SIZE, Callable(self, "_return_to_title"))
+
+func _create_result_button(parent: Control, texture: Texture2D, position: Vector2, size: Vector2, callback: Callable) -> TextureButton:
+	var button := TextureButton.new()
+	button.position = position
+	button.size = size
+	button.pivot_offset = size * 0.5
+	button.texture_hover = texture
+	button.texture_pressed = texture
+	button.ignore_texture_size = true
+	button.stretch_mode = TextureButton.STRETCH_SCALE
+	button.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	button.focus_mode = Control.FOCUS_NONE
+	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	button.pressed.connect(Callable(self, "_press_result_button").bind(button, callback))
+	parent.add_child(button)
+	return button
+
+func _press_result_button(button: TextureButton, callback: Callable) -> void:
+	_play_button_sound()
+	if is_instance_valid(button):
+		button.disabled = true
+	var tween := create_tween()
+	tween.tween_property(button, "scale", Vector2(TITLE_BUTTON_PRESS_SCALE, TITLE_BUTTON_PRESS_SCALE), 0.06).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tween.tween_property(button, "scale", Vector2(TITLE_BUTTON_POP_SCALE, TITLE_BUTTON_POP_SCALE), 0.08).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tween.tween_property(button, "scale", Vector2.ONE, 0.06).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tween.tween_callback(callback)
+	tween.tween_callback(func() -> void:
+		if is_instance_valid(button):
+			button.disabled = false
+	)
+
+func _clear_result_screen() -> void:
+	if not _result_layer:
+		return
+	_result_layer.queue_free()
+	_result_layer = null
+	_play_background_music()
+
+func _restart_current_level() -> void:
+	_clear_result_screen()
+	_reset_level()
+
+func _advance_level_or_home() -> void:
+	_clear_result_screen()
+	if _level_index >= LEVEL_COUNT - 1:
+		_return_to_title()
+		return
+	_advance_level()
+
+func _return_to_title() -> void:
+	_clear_result_screen()
+	_game_started = false
+	_level_index = LEVEL_SPRING
+	_reset_level(false)
+	_set_world_visible(false)
+	if _title_layer:
+		_title_layer.visible = true
 
 func _advance_level() -> void:
 	_level_index = min(_level_index + 1, LEVEL_COUNT - 1)
 	_reset_level()
 
+func _is_player_on_summit_platform() -> bool:
+	if not _player or not _player.is_on_floor():
+		return false
+	var summit: Rect2 = _platforms[_platforms.size() - 1]
+	var player_position: Vector2 = _player.global_position
+	return (
+		player_position.x >= summit.position.x - 8.0
+		and player_position.x <= summit.end.x + 8.0
+		and player_position.y <= summit.position.y + 14.0
+	)
+
+func _summit_flag_position() -> Vector2:
+	if _platforms.is_empty():
+		return Vector2(1062, 18)
+	var summit: Rect2 = _platforms[_platforms.size() - 1]
+	return Vector2(summit.end.x - 52.0, summit.position.y - 24.0)
+
 func _on_sheep_pocketed(_sheep: Node) -> void:
 	_collected += 1
+	_play_sheep_collect_sound()
 	_player.pocket_count = _collected
 	_player.queue_redraw()
 	_update_hud()
@@ -659,12 +948,74 @@ func _on_sheep_pocketed(_sheep: Node) -> void:
 		_status_label.text = "山顶见"
 		_status_label.visible = true
 
+func _play_sheep_collect_sound() -> void:
+	if not _sheep_collect_sound_player:
+		return
+	_sheep_collect_sound_player.stop()
+	_sheep_collect_sound_player.play()
+
 func _update_hud() -> void:
 	if _counter_label:
 		_counter_label.text = "%d/4 %s  口袋 %d/%d" % [_level_index + 1, _current_level_name(), _collected, _total_sheep]
 
 func _current_level_name() -> String:
 	return str(LEVEL_NAMES[_level_index])
+
+func _platform_layout_for_level(level: int) -> Array[Rect2]:
+	match level:
+		LEVEL_SUMMER:
+			return [
+				Rect2(Vector2(-60, 230), Vector2(220, 24)),
+				Rect2(Vector2(198, 202), Vector2(86, 18)),
+				Rect2(Vector2(318, 174), Vector2(118, 18)),
+				Rect2(Vector2(470, 190), Vector2(82, 18)),
+				Rect2(Vector2(586, 158), Vector2(96, 18)),
+				Rect2(Vector2(716, 126), Vector2(126, 18)),
+				Rect2(Vector2(874, 144), Vector2(78, 18)),
+				Rect2(Vector2(982, 102), Vector2(82, 18)),
+				Rect2(Vector2(1090, 62), Vector2(72, 20)),
+			]
+		LEVEL_AUTUMN:
+			return [
+				Rect2(Vector2(-60, 230), Vector2(250, 24)),
+				Rect2(Vector2(220, 206), Vector2(78, 18)),
+				Rect2(Vector2(330, 182), Vector2(96, 18)),
+				Rect2(Vector2(458, 206), Vector2(118, 18)),
+				Rect2(Vector2(608, 170), Vector2(74, 18)),
+				Rect2(Vector2(714, 136), Vector2(122, 18)),
+				Rect2(Vector2(868, 154), Vector2(76, 18)),
+				Rect2(Vector2(976, 112), Vector2(82, 18)),
+				Rect2(Vector2(1088, 66), Vector2(76, 20)),
+			]
+		LEVEL_WINTER:
+			return [
+				Rect2(Vector2(-60, 230), Vector2(205, 24)),
+				Rect2(Vector2(176, 198), Vector2(64, 18)),
+				Rect2(Vector2(274, 220), Vector2(104, 18)),
+				Rect2(Vector2(410, 186), Vector2(70, 18)),
+				Rect2(Vector2(512, 150), Vector2(100, 18)),
+				Rect2(Vector2(644, 166), Vector2(78, 18)),
+				Rect2(Vector2(754, 128), Vector2(92, 18)),
+				Rect2(Vector2(878, 88), Vector2(78, 18)),
+				Rect2(Vector2(988, 48), Vector2(118, 20)),
+			]
+		_:
+			return [
+				Rect2(Vector2(-60, 230), Vector2(235, 24)),
+				Rect2(Vector2(205, 205), Vector2(86, 18)),
+				Rect2(Vector2(325, 218), Vector2(118, 18)),
+				Rect2(Vector2(478, 186), Vector2(82, 18)),
+				Rect2(Vector2(594, 158), Vector2(126, 18)),
+				Rect2(Vector2(752, 176), Vector2(78, 18)),
+				Rect2(Vector2(862, 134), Vector2(82, 18)),
+				Rect2(Vector2(974, 94), Vector2(72, 18)),
+				Rect2(Vector2(1076, 56), Vector2(72, 20)),
+			]
+
+func _update_platform_seasons() -> void:
+	for platform in get_tree().get_nodes_in_group("season_platforms"):
+		if platform is HillPlatform:
+			(platform as HillPlatform).set_season(_level_index)
 
 func _season_colors() -> Dictionary:
 	match _level_index:
@@ -784,7 +1135,7 @@ func _draw_snowflakes(snow_color: Color) -> void:
 	]
 	for index in range(flakes.size()):
 		var flake: Vector2 = flakes[index]
-		var size := Vector2(2, 2) if index % 3 != 0 else Vector2(3, 3)
+		var size: Vector2 = Vector2(2, 2) if index % 3 != 0 else Vector2(3, 3)
 		draw_rect(Rect2(flake, size), snow_color)
 
 func _draw_tree(root: Vector2, trunk_color: Color, leaf_color: Color, snow_cap: bool) -> void:
