@@ -60,6 +60,7 @@ const SHEEP_COLLECT_SOUND: AudioStream = preload("res://素材/音乐/小羊叫.
 const BUTTON_SOUND: AudioStream = preload("res://素材/音乐/按钮声.MP3")
 const LEVEL_CLEAR_SOUND: AudioStream = preload("res://素材/音乐/通关音效.mp3")
 const LEVEL_FAIL_SOUND: AudioStream = preload("res://素材/音乐/失败音效.mp3")
+const UI_FONT: FontFile = preload("res://fonts/NotoSansSC-VF.ttf")
 const BACKGROUND_MUSIC_VOLUME_DB := -12.0
 const SHEEP_COLLECT_SOUND_VOLUME_DB := -6.0
 const BUTTON_SOUND_VOLUME_DB := -8.0
@@ -114,6 +115,15 @@ var _pause_layer: CanvasLayer
 var _mushroom_platform_index: int = -1
 
 var _platforms: Array[Rect2] = []
+
+func _style_label(label: Label, font_size: int, color: Color) -> void:
+	label.add_theme_font_override("font", UI_FONT)
+	label.add_theme_font_size_override("font_size", font_size)
+	label.add_theme_color_override("font_color", color)
+
+func _style_button(button: Button, font_size: int = 12) -> void:
+	button.add_theme_font_override("font", UI_FONT)
+	button.add_theme_font_size_override("font_size", font_size)
 
 func _ready() -> void:
 	_rng.randomize()
@@ -631,14 +641,12 @@ func _create_hud() -> void:
 
 	_counter_label = Label.new()
 	_counter_label.position = Vector2(14, 9)
-	_counter_label.add_theme_font_size_override("font_size", 11)
-	_counter_label.add_theme_color_override("font_color", Color("#eef0da"))
+	_style_label(_counter_label, 11, Color("#eef0da"))
 	_hud_layer.add_child(_counter_label)
 
 	_status_label = Label.new()
 	_status_label.position = Vector2(190, 10)
-	_status_label.add_theme_font_size_override("font_size", 14)
-	_status_label.add_theme_color_override("font_color", Color("#eef0da"))
+	_style_label(_status_label, 14, Color("#eef0da"))
 	_status_label.visible = false
 	_hud_layer.add_child(_status_label)
 
@@ -910,8 +918,7 @@ func _show_pause_tutorial() -> void:
 	title.size = Vector2(140, 34)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 18)
-	title.add_theme_color_override("font_color", Color("#3d2c1c"))
+	_style_label(title, 18, Color("#3d2c1c"))
 	title.z_index = 102
 	popup.add_child(title)
 
@@ -922,8 +929,7 @@ func _show_pause_tutorial() -> void:
 	text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	text.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	text.add_theme_font_size_override("font_size", 9)
-	text.add_theme_color_override("font_color", Color("#3d2c1c"))
+	_style_label(text, 9, Color("#3d2c1c"))
 	text.z_index = 102
 	popup.add_child(text)
 
@@ -932,6 +938,7 @@ func _show_pause_tutorial() -> void:
 	close.text = "返回"
 	close.position = Vector2(194, 210)
 	close.size = Vector2(92, 28)
+	_style_button(close, 12)
 	close.z_index = 102
 	close.pressed.connect(Callable(popup, "queue_free"))
 	popup.add_child(close)
@@ -989,14 +996,14 @@ func _show_cover_tutorial() -> void:
 	text.position = Vector2(104, 42)
 	text.size = Vector2(272, 140)
 	text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	text.add_theme_font_size_override("font_size", 9)
-	text.add_theme_color_override("font_color", Color("#3d2c1c"))
+	_style_label(text, 9, Color("#3d2c1c"))
 	popup.add_child(text)
 
 	var close := Button.new()
 	close.text = "返回"
 	close.position = Vector2(194, 210)
 	close.size = Vector2(92, 28)
+	_style_button(close, 12)
 	close.pressed.connect(Callable(popup, "queue_free"))
 	popup.add_child(close)
 
@@ -1019,8 +1026,7 @@ func _create_title_screen() -> void:
 	title.position = Vector2(40, 24)
 	title.size = Vector2(400, 34)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 27)
-	title.add_theme_color_override("font_color", Color("#f3f0dc"))
+	_style_label(title, 27, Color("#f3f0dc"))
 	root.add_child(title)
 
 	var tutorial_title := Label.new()
@@ -1028,8 +1034,7 @@ func _create_title_screen() -> void:
 	tutorial_title.position = Vector2(46, 72)
 	tutorial_title.size = Vector2(388, 22)
 	tutorial_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	tutorial_title.add_theme_font_size_override("font_size", 15)
-	tutorial_title.add_theme_color_override("font_color", Color("#f3f0dc"))
+	_style_label(tutorial_title, 15, Color("#f3f0dc"))
 	root.add_child(tutorial_title)
 
 	var tutorial := Label.new()
@@ -1037,14 +1042,14 @@ func _create_title_screen() -> void:
 	tutorial.position = Vector2(80, 99)
 	tutorial.size = Vector2(320, 96)
 	tutorial.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	tutorial.add_theme_font_size_override("font_size", 11)
-	tutorial.add_theme_color_override("font_color", Color("#e6ead4"))
+	_style_label(tutorial, 11, Color("#e6ead4"))
 	root.add_child(tutorial)
 
 	var start_button := Button.new()
 	start_button.text = "开始游戏"
 	start_button.position = Vector2(170, 190)
 	start_button.size = Vector2(140, 28)
+	_style_button(start_button, 12)
 	start_button.pressed.connect(_start_game)
 	root.add_child(start_button)
 
@@ -1052,6 +1057,7 @@ func _create_title_screen() -> void:
 	quit_button.text = "退出游戏"
 	quit_button.position = Vector2(170, 224)
 	quit_button.size = Vector2(140, 28)
+	_style_button(quit_button, 12)
 	quit_button.pressed.connect(_quit_game)
 	root.add_child(quit_button)
 
