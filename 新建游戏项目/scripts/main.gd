@@ -39,6 +39,20 @@ const TITLE_QUIT_BUTTON_TEXTURE: Texture2D = preload("res://素材/processed/tit
 const RESULT_HOME_BUTTON_TEXTURE: Texture2D = preload("res://素材/processed/result_home_button.png")
 const RESULT_NEXT_BUTTON_TEXTURE: Texture2D = preload("res://素材/processed/result_next_button.png")
 const RESULT_RESTART_BUTTON_TEXTURE: Texture2D = preload("res://素材/processed/result_restart_button.png")
+const HUD_CONTINUE_BUTTON_TEXTURE: Texture2D = preload("res://素材/processed/hud_continue_button.png")
+const HUD_PAUSE_BUTTON_TEXTURE: Texture2D = preload("res://素材/processed/hud_pause_button.png")
+const HUD_MUSIC_BUTTON_TEXTURE: Texture2D = preload("res://素材/processed/hud_music_button.png")
+const HUD_MUTE_BUTTON_TEXTURE: Texture2D = preload("res://素材/processed/hud_mute_button.png")
+const PAUSE_SCREEN_TEXTURE: Texture2D = preload("res://素材/角色/游戏暂停.png")
+const PAUSE_SCREEN_REGION := Rect2(0, 390, 2385, 1995)
+const PAUSE_CONTINUE_BUTTON_TEXTURE: Texture2D = preload("res://素材/按钮/暂停时继续游戏.png")
+const PAUSE_RESTART_BUTTON_TEXTURE: Texture2D = preload("res://素材/按钮/暂停时重新开始.png")
+const PAUSE_HOME_BUTTON_TEXTURE: Texture2D = preload("res://素材/按钮/暂停时返回主页.png")
+const PAUSE_TUTORIAL_BUTTON_TEXTURE: Texture2D = preload("res://素材/按钮/游戏说明.png")
+const PAUSE_CONTINUE_BUTTON_REGION := Rect2(52, 174, 2269, 613)
+const PAUSE_RESTART_BUTTON_REGION := Rect2(62, 710, 2283, 607)
+const PAUSE_HOME_BUTTON_REGION := Rect2(56, 1158, 2321, 617)
+const PAUSE_TUTORIAL_BUTTON_REGION := Rect2(58, 1576, 2287, 615)
 const LEVEL_FAIL_TEXTURE: Texture2D = preload("res://素材/角色/失败卡.png")
 const LEVEL_CLEAR_TEXTURE: Texture2D = preload("res://素材/角色/通关卡.png")
 const BACKGROUND_MUSIC: AudioStream = preload("res://素材/音乐/背景音效.MP3")
@@ -58,11 +72,25 @@ const RESULT_CLEAR_RIGHT_BUTTON_POSITION := Vector2(249, 218)
 const RESULT_FAIL_LEFT_BUTTON_POSITION := Vector2(147, 227)
 const RESULT_FAIL_RIGHT_BUTTON_POSITION := Vector2(249, 227)
 const RESULT_BUTTON_SIZE := Vector2(84, 30)
+const HUD_STATE_BUTTON_SIZE := Vector2(28, 28)
+const HUD_MUSIC_BUTTON_POSITION := Vector2(410, 8)
+const HUD_PAUSE_BUTTON_POSITION := Vector2(444, 8)
+const GAME_VIEWPORT_SIZE := Vector2(480, 270)
+const PAUSE_SCREEN_DISPLAY_POSITION := Vector2(115, 35)
+const PAUSE_SCREEN_DISPLAY_SIZE := Vector2(232, 194)
+const PAUSE_MENU_BUTTON_SIZE := Vector2(82, 22)
+const PAUSE_MENU_CONTINUE_POSITION := Vector2(216, 89)
+const PAUSE_MENU_RESTART_POSITION := Vector2(216, 115)
+const PAUSE_MENU_HOME_POSITION := Vector2(216, 141)
+const PAUSE_MENU_TUTORIAL_POSITION := Vector2(216, 167)
 
 var _player: ShepherdPlayer
 var _camera: Camera2D
+var _hud_layer: CanvasLayer
 var _counter_label: Label
 var _status_label: Label
+var _music_button: TextureButton
+var _pause_button: TextureButton
 var _background_music_player: AudioStreamPlayer
 var _sheep_collect_sound_player: AudioStreamPlayer
 var _button_sound_player: AudioStreamPlayer
@@ -78,8 +106,11 @@ var _intro_tween: Tween
 var _level_clear_tween: Tween
 var _level_index := LEVEL_SPRING
 var _game_started := false
+var _music_muted := false
+var _game_paused := false
 var _title_layer: CanvasLayer
 var _result_layer: CanvasLayer
+var _pause_layer: CanvasLayer
 var _mushroom_platform_index: int = -1
 
 var _platforms: Array[Rect2] = []
@@ -514,6 +545,7 @@ func _create_camera() -> void:
 func _create_audio_players() -> void:
 	_background_music_player = AudioStreamPlayer.new()
 	_background_music_player.name = "BackgroundMusic"
+	_background_music_player.process_mode = Node.PROCESS_MODE_ALWAYS
 	_background_music_player.stream = BACKGROUND_MUSIC
 	if _background_music_player.stream is AudioStreamMP3:
 		var music_stream := _background_music_player.stream as AudioStreamMP3
@@ -531,6 +563,7 @@ func _create_audio_players() -> void:
 
 	_button_sound_player = AudioStreamPlayer.new()
 	_button_sound_player.name = "ButtonSound"
+	_button_sound_player.process_mode = Node.PROCESS_MODE_ALWAYS
 	_button_sound_player.stream = BUTTON_SOUND
 	_button_sound_player.volume_db = BUTTON_SOUND_VOLUME_DB
 	add_child(_button_sound_player)
@@ -586,27 +619,54 @@ func _finish_route_preview() -> void:
 		_status_label.visible = false
 
 func _create_hud() -> void:
-	var layer := CanvasLayer.new()
-	add_child(layer)
+	_hud_layer = CanvasLayer.new()
+	_hud_layer.process_mode = Node.PROCESS_MODE_ALWAYS
+	add_child(_hud_layer)
 
 	var panel := ColorRect.new()
 	panel.color = Color(0.19, 0.25, 0.18, 0.72)
 	panel.position = Vector2(8, 8)
 	panel.size = Vector2(168, 22)
-	layer.add_child(panel)
+	_hud_layer.add_child(panel)
 
 	_counter_label = Label.new()
 	_counter_label.position = Vector2(14, 9)
 	_counter_label.add_theme_font_size_override("font_size", 11)
 	_counter_label.add_theme_color_override("font_color", Color("#eef0da"))
-	layer.add_child(_counter_label)
+	_hud_layer.add_child(_counter_label)
 
 	_status_label = Label.new()
 	_status_label.position = Vector2(190, 10)
 	_status_label.add_theme_font_size_override("font_size", 14)
 	_status_label.add_theme_color_override("font_color", Color("#eef0da"))
 	_status_label.visible = false
-	layer.add_child(_status_label)
+	_hud_layer.add_child(_status_label)
+
+	_music_button = _create_hud_state_button(HUD_MUSIC_BUTTON_TEXTURE, HUD_MUSIC_BUTTON_POSITION, Callable(self, "_toggle_music_mute"))
+	_pause_button = _create_hud_state_button(HUD_CONTINUE_BUTTON_TEXTURE, HUD_PAUSE_BUTTON_POSITION, Callable(self, "_toggle_game_pause"))
+
+func _create_hud_state_button(texture: Texture2D, position: Vector2, callback: Callable) -> TextureButton:
+	var button := TextureButton.new()
+	button.process_mode = Node.PROCESS_MODE_ALWAYS
+	button.position = position
+	button.size = HUD_STATE_BUTTON_SIZE
+	button.pivot_offset = HUD_STATE_BUTTON_SIZE * 0.5
+	button.ignore_texture_size = true
+	button.stretch_mode = TextureButton.STRETCH_SCALE
+	button.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	button.focus_mode = Control.FOCUS_NONE
+	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	_set_button_texture(button, texture)
+	button.pressed.connect(callback)
+	_hud_layer.add_child(button)
+	return button
+
+func _set_button_texture(button: TextureButton, texture: Texture2D) -> void:
+	if not button:
+		return
+	button.texture_normal = texture
+	button.texture_hover = texture
+	button.texture_pressed = texture
 
 func _set_world_visible(visible: bool) -> void:
 	if _player:
@@ -681,6 +741,201 @@ func _play_button_sound() -> void:
 	_button_sound_player.stop()
 	_button_sound_player.play()
 
+func _toggle_music_mute() -> void:
+	_play_button_sound()
+	_music_muted = not _music_muted
+	_set_button_texture(_music_button, HUD_MUTE_BUTTON_TEXTURE if _music_muted else HUD_MUSIC_BUTTON_TEXTURE)
+	if not _background_music_player:
+		return
+	if _music_muted:
+		_background_music_player.stream_paused = true
+	else:
+		_background_music_player.stream_paused = false
+		if _game_started and not _result_layer:
+			_play_background_music()
+
+func _toggle_game_pause() -> void:
+	if not _game_started or _result_layer:
+		return
+	_play_button_sound()
+	_set_game_paused(not _game_paused)
+
+func _set_game_paused(paused: bool) -> void:
+	_game_paused = paused
+	get_tree().paused = paused
+	_set_button_texture(_pause_button, HUD_PAUSE_BUTTON_TEXTURE if paused else HUD_CONTINUE_BUTTON_TEXTURE)
+	if paused:
+		_show_pause_screen()
+	else:
+		_clear_pause_screen()
+
+func _show_pause_screen() -> void:
+	if _pause_layer:
+		return
+
+	_pause_layer = CanvasLayer.new()
+	_pause_layer.layer = 25
+	_pause_layer.process_mode = Node.PROCESS_MODE_ALWAYS
+	add_child(_pause_layer)
+
+	var root := Control.new()
+	root.process_mode = Node.PROCESS_MODE_ALWAYS
+	root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_pause_layer.add_child(root)
+
+	var shade := ColorRect.new()
+	shade.color = Color(0.02, 0.025, 0.02, 0.58)
+	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.add_child(shade)
+
+	var screen_rect := _pause_screen_display_rect()
+	var card_scale := Vector2(
+		screen_rect.size.x / PAUSE_SCREEN_REGION.size.x,
+		screen_rect.size.y / PAUSE_SCREEN_REGION.size.y
+	)
+	_create_pause_card_shadow(root, screen_rect.position, card_scale)
+
+	var card := Sprite2D.new()
+	card.texture = _atlas_texture(PAUSE_SCREEN_TEXTURE, PAUSE_SCREEN_REGION)
+	card.centered = false
+	card.position = screen_rect.position
+	card.scale = card_scale
+	card.z_index = 10
+	root.add_child(card)
+
+	_create_pause_menu_button(root, PAUSE_MENU_CONTINUE_POSITION, PAUSE_MENU_BUTTON_SIZE, PAUSE_CONTINUE_BUTTON_TEXTURE, PAUSE_CONTINUE_BUTTON_REGION, Callable(self, "_resume_game"))
+	_create_pause_menu_button(root, PAUSE_MENU_RESTART_POSITION, PAUSE_MENU_BUTTON_SIZE, PAUSE_RESTART_BUTTON_TEXTURE, PAUSE_RESTART_BUTTON_REGION, Callable(self, "_restart_from_pause"))
+	_create_pause_menu_button(root, PAUSE_MENU_HOME_POSITION, PAUSE_MENU_BUTTON_SIZE, PAUSE_HOME_BUTTON_TEXTURE, PAUSE_HOME_BUTTON_REGION, Callable(self, "_return_to_title_from_pause"))
+	_create_pause_menu_button(root, PAUSE_MENU_TUTORIAL_POSITION, PAUSE_MENU_BUTTON_SIZE, PAUSE_TUTORIAL_BUTTON_TEXTURE, PAUSE_TUTORIAL_BUTTON_REGION, Callable(self, "_show_pause_tutorial"))
+
+func _create_pause_card_shadow(parent: Node, position: Vector2, scale: Vector2) -> void:
+	var shadow_offsets := [
+		Vector2(0, 1),
+		Vector2(1, 2),
+		Vector2(-1, 2),
+		Vector2(0, 3),
+	]
+	var shadow_alphas := [0.10, 0.08, 0.06, 0.04]
+	for index in range(shadow_offsets.size()):
+		var shadow := Sprite2D.new()
+		shadow.texture = _atlas_texture(PAUSE_SCREEN_TEXTURE, PAUSE_SCREEN_REGION)
+		shadow.centered = false
+		shadow.position = position + shadow_offsets[index]
+		shadow.scale = scale
+		shadow.modulate = Color(0.0, 0.0, 0.0, float(shadow_alphas[index]))
+		shadow.z_index = 9
+		parent.add_child(shadow)
+
+func _pause_screen_display_rect() -> Rect2:
+	var viewport_size: Vector2 = GAME_VIEWPORT_SIZE
+	var size: Vector2 = PAUSE_SCREEN_DISPLAY_SIZE
+	var max_size: Vector2 = viewport_size * 0.92
+	if size.x > max_size.x or size.y > max_size.y:
+		var scale: float = min(max_size.x / size.x, max_size.y / size.y)
+		size *= scale
+	var position: Vector2 = PAUSE_SCREEN_DISPLAY_POSITION
+	return Rect2(position, size)
+
+func _clear_pause_screen() -> void:
+	if not _pause_layer:
+		return
+	_pause_layer.queue_free()
+	_pause_layer = null
+
+func _create_pause_menu_button(parent: Control, position: Vector2, size: Vector2, texture: Texture2D, region: Rect2, callback: Callable) -> TextureButton:
+	var button := TextureButton.new()
+	button.process_mode = Node.PROCESS_MODE_ALWAYS
+	button.position = position
+	button.size = size
+	button.pivot_offset = size * 0.5
+	button.ignore_texture_size = true
+	button.stretch_mode = TextureButton.STRETCH_SCALE
+	button.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	button.texture_hover = _atlas_texture(texture, region)
+	button.texture_pressed = _atlas_texture(texture, region)
+	button.focus_mode = Control.FOCUS_NONE
+	button.z_index = 20
+	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	button.pressed.connect(Callable(self, "_press_pause_menu_button").bind(callback))
+	parent.add_child(button)
+	return button
+
+func _press_pause_menu_button(callback: Callable) -> void:
+	_play_button_sound()
+	callback.call()
+
+func _resume_game() -> void:
+	_set_game_paused(false)
+
+func _restart_from_pause() -> void:
+	_set_game_paused(false)
+	_reset_level()
+
+func _return_to_title_from_pause() -> void:
+	_set_game_paused(false)
+	_return_to_title()
+
+func _show_pause_tutorial() -> void:
+	if not _pause_layer:
+		return
+	var existing := _pause_layer.get_node_or_null("TutorialPopup")
+	if existing:
+		existing.queue_free()
+		return
+
+	var popup := Control.new()
+	popup.name = "TutorialPopup"
+	popup.process_mode = Node.PROCESS_MODE_ALWAYS
+	popup.mouse_filter = Control.MOUSE_FILTER_STOP
+	popup.z_index = 100
+	popup.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_pause_layer.add_child(popup)
+
+	var shade := ColorRect.new()
+	shade.color = Color(0.05, 0.07, 0.05, 0.62)
+	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
+	shade.z_index = 100
+	popup.add_child(shade)
+
+	var panel := ColorRect.new()
+	panel.color = Color(0.78, 0.68, 0.50, 0.97)
+	panel.position = Vector2(86, 28)
+	panel.size = Vector2(308, 218)
+	panel.z_index = 101
+	popup.add_child(panel)
+
+	var title := Label.new()
+	title.text = "游戏说明"
+	title.position = Vector2(170, 38)
+	title.size = Vector2(140, 34)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 18)
+	title.add_theme_color_override("font_color", Color("#3d2c1c"))
+	title.z_index = 102
+	popup.add_child(title)
+
+	var text := Label.new()
+	text.text = "A/D 或方向键移动\nSpace/W/上方向键跳跃\n起跳后快速再按一次可跳得更高\n收集每关 7 只小羊后到山顶旗子通关\n碰到红蘑菇或小红球会失败\nR 重新开始当前关"
+	text.position = Vector2(152, 92)
+	text.size = Vector2(176, 92)
+	text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	text.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	text.add_theme_font_size_override("font_size", 9)
+	text.add_theme_color_override("font_color", Color("#3d2c1c"))
+	text.z_index = 102
+	popup.add_child(text)
+
+	var close := Button.new()
+	close.process_mode = Node.PROCESS_MODE_ALWAYS
+	close.text = "返回"
+	close.position = Vector2(194, 210)
+	close.size = Vector2(92, 28)
+	close.z_index = 102
+	close.pressed.connect(Callable(popup, "queue_free"))
+	popup.add_child(close)
+
 func _play_level_result_sound(passed: bool) -> void:
 	_stop_background_music()
 	var player: AudioStreamPlayer = _level_clear_sound_player if passed else _level_fail_sound_player
@@ -694,7 +949,10 @@ func _stop_background_music() -> void:
 		_background_music_player.stop()
 
 func _play_background_music() -> void:
+	if _music_muted:
+		return
 	if _background_music_player and not _background_music_player.playing:
+		_background_music_player.stream_paused = false
 		_background_music_player.play()
 
 func _cancel_level_clear_delay() -> void:
@@ -722,23 +980,23 @@ func _show_cover_tutorial() -> void:
 
 	var panel := ColorRect.new()
 	panel.color = Color(0.78, 0.68, 0.50, 0.97)
-	panel.position = Vector2(100, 45)
-	panel.size = Vector2(280, 172)
+	panel.position = Vector2(86, 28)
+	panel.size = Vector2(308, 218)
 	popup.add_child(panel)
 
 	var text := Label.new()
 	text.text = "游戏说明\n\nA/D 或方向键移动\nSpace/W/上方向键跳跃\n起跳后快速再按一次可跳得更高\n收集每关 7 只小羊后到山顶旗子通关\n碰到红蘑菇或小红球会失败\nR 重新开始当前关"
-	text.position = Vector2(116, 58)
-	text.size = Vector2(248, 122)
+	text.position = Vector2(104, 42)
+	text.size = Vector2(272, 140)
 	text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	text.add_theme_font_size_override("font_size", 10)
+	text.add_theme_font_size_override("font_size", 9)
 	text.add_theme_color_override("font_color", Color("#3d2c1c"))
 	popup.add_child(text)
 
 	var close := Button.new()
 	close.text = "返回"
-	close.position = Vector2(204, 185)
-	close.size = Vector2(72, 24)
+	close.position = Vector2(194, 210)
+	close.size = Vector2(92, 28)
 	close.pressed.connect(Callable(popup, "queue_free"))
 	popup.add_child(close)
 
@@ -802,6 +1060,7 @@ func _create_title_screen() -> void:
 func _start_game() -> void:
 	if _game_started:
 		return
+	_set_game_paused(false)
 	_game_started = true
 	if _title_layer:
 		_title_layer.visible = false
@@ -828,6 +1087,7 @@ func _complete_level() -> void:
 func _show_level_result(passed: bool) -> void:
 	if _result_layer:
 		return
+	_set_game_paused(false)
 	_cancel_level_clear_delay()
 	if _intro_tween and _intro_tween.is_valid():
 		_intro_tween.kill()
@@ -909,6 +1169,7 @@ func _advance_level_or_home() -> void:
 	_advance_level()
 
 func _return_to_title() -> void:
+	_set_game_paused(false)
 	_clear_result_screen()
 	_game_started = false
 	_level_index = LEVEL_SPRING
